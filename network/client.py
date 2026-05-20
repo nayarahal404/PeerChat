@@ -14,6 +14,22 @@ RETRY_COOLDOWN = 60
 private_key, public_key = None, None
 
 
+# FIX 1: Dynamically detect this machine's actual LAN IP address (same as server)
+def get_local_ip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("8.8.8.8", 80))
+        local_ip = s.getsockname()[0]
+    except Exception:
+        local_ip = "127.0.0.1"
+    finally:
+        s.close()
+    return local_ip
+
+
+MY_LAN_IP = get_local_ip()
+
+
 def init_client_keys():
     global private_key, public_key
     from security.keys import ensure_keys_exist, load_private_key, load_public_key
@@ -23,10 +39,17 @@ def init_client_keys():
 
 def connect_to_peer(ip, port, receive_loop):
     port, my_port = int(port), int(config.PORT)
-    if ip == "127.0.0.1" and port == my_port: return
+
+    # FIX 2: Block connections to yourself if the target IP is localhost OR your own LAN IP
+    if port == my_port and ip in ("127.0.0.1", MY_LAN_IP):
+        return
+
     with network_lock:
         if (ip, port) in connected_peers: return
-    if ip == "127.0.0.1" and my_port > port: time.sleep(0.2)
+
+    # FIX 3: Maintain the race-condition delay for local debugging instances, checking both loopbacks
+    if my_port > port and ip in ("127.0.0.1", MY_LAN_IP):
+        time.sleep(0.2)
 
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -64,20 +87,17 @@ def send_chat_message(message, target_peer_id=None):
         "message": message
     })
 
-    sent_peers = set()  # Tracks unique peer IDs that have received the packet
+    sent_peers = set()
 
     with network_lock:
-        # Create a safe snapshot of current authenticated connections
         active_sockets = [sock for sock in authenticated_peers if sock in peer_ids]
 
         for sock in active_sockets:
             p_id = peer_ids[sock]
 
-            # 1. If it's a direct message, only send it to the matching target
             if target_peer_id and p_id != target_peer_id:
                 continue
 
-            # 2. Prevent duplicate transmissions to the same logical identity
             if p_id in sent_peers:
                 continue
 
@@ -90,25 +110,23 @@ def send_chat_message(message, target_peer_id=None):
 
 last_attempts = {}
 
-def start_discovery_loop(receive_loop):
 
+def start_discovery_loop(receive_loop):
     def loop():
         # ---------------------------------
         # Add bootstrap peers once
         # ---------------------------------
         for ip, port in BOOTSTRAP_PEERS:
-            if int(port) != int(config.PORT):
-                add_known_peer(ip, port)
+            # FIX 4: Ensure bootstrap filters skip self if bootstrap addresses match your own LAN IP
+            if int(port) == int(config.PORT) and ip in ("127.0.0.1", MY_LAN_IP):
+                continue
+            add_known_peer(ip, port)
 
         # ---------------------------------
         # Main discovery loop
         # ---------------------------------
-
         while True:
             try:
-                # ---------------------------------
-                # Snapshot peer state
-                # ---------------------------------
                 with network_lock:
                     known = list(known_peers)
                     connected = list(connected_peers)
@@ -118,10 +136,6 @@ def start_discovery_loop(receive_loop):
                     f"known={len(known)} "
                     f"connected={len(connected)}"
                 )
-
-                # ---------------------------------
-                # Maintain limited peer connections
-                # ---------------------------------
 
                 current_connections = len(connected)
                 if current_connections < MAX_PEERS:
@@ -139,15 +153,12 @@ def start_discovery_loop(receive_loop):
                     )
 
                     for ip, port in candidates[:needed]:
-
                         peer = (ip, port)
                         now = time.time()
 
-                        # cooldown protection
                         if peer in last_attempts:
                             elapsed = now - last_attempts[peer]
                             if elapsed < RETRY_COOLDOWN:
-
                                 print(
                                     f"[DISCOVERY] "
                                     f"Cooldown active for "
@@ -167,7 +178,6 @@ def start_discovery_loop(receive_loop):
                                 receive_loop
                             )
                         except Exception as e:
-
                             print(
                                 f"[DISCOVERY] "
                                 f"Connection failed "
@@ -177,10 +187,7 @@ def start_discovery_loop(receive_loop):
                 # ---------------------------------
                 # Gossip discovery
                 # ---------------------------------
-
-                from network.discover import (
-                    get_all_connections
-                )
+                from network.discover import get_all_connections
 
                 all_socks = get_all_connections()
                 if all_socks:
@@ -193,10 +200,7 @@ def start_discovery_loop(receive_loop):
                     )
                     packet = create_packet(
                         "peer_request",
-                        {
-                            "sample_size":
-                            GOSSIP_PEER_SAMPLE
-                        }
+                        {"sample_size": GOSSIP_PEER_SAMPLE}
                     )
                     print(
                         f"[DISCOVERY] "
@@ -222,17 +226,10 @@ def start_discovery_loop(receive_loop):
                                 f"{e}"
                             )
                 else:
-                    print(
-                        "[DISCOVERY] "
-                        "No active sockets"
-                    )
+                    print("[DISCOVERY] No active sockets")
 
             except Exception as e:
-
-                print(
-                    f"[DISCOVERY] "
-                    f"Loop error: {e}"
-                )
+                print(f"[DISCOVERY] Loop error: {e}")
 
             time.sleep(DISCOVERY_INTERVAL)
 

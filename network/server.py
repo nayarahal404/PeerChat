@@ -9,12 +9,32 @@ from storage.database import save_message
 from security.keys import pem_to_public_key
 from security.crypto import verify_signature
 
-HOST = "127.0.0.1"
+# FIX 1: Change HOST to '0.0.0.0' so the server listens on all network interfaces (WiFi, Ethernet, and localhost)
+LISTEN_HOST = "0.0.0.0"
+
+
+# FIX 2: Dynamically detect this machine's actual LAN IP address (e.g., 192.168.1.5)
+def get_local_ip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        # This doesn't actually connect or send data, it just forces the OS to pick the active network interface
+        s.connect(("8.8.8.8", 80))
+        local_ip = s.getsockname()[0]
+    except Exception:
+        local_ip = "127.0.0.1"
+    finally:
+        s.close()
+    return local_ip
+
+
+MY_LAN_IP = get_local_ip()
+print(f"[SYSTEM] Detected local LAN IP: {MY_LAN_IP}")
 
 
 def push_routing_table(target_sock):
     peers = [[ip, port] for ip, port in get_authenticated_peer_addresses()]
-    peers.append([HOST, int(config.PORT)])
+    # FIX 3: Push our actual LAN IP to peers instead of 127.0.0.1
+    peers.append([MY_LAN_IP, int(config.PORT)])
     try:
         target_sock.sendall(create_packet("peer_response", {"peers": peers}))
     except:
@@ -47,7 +67,11 @@ def receive_loop(conn):
             if p_type == "identity":
                 temp_peer_id = p_data["peer_id"]
                 remote_listening_addr = (conn.getpeername()[0], int(p_data["listening_port"]))
-                if remote_listening_addr[0] == "127.0.0.1" and remote_listening_addr[1] == int(config.PORT): break
+
+                # FIX 4: Prevent connecting to yourself by checking against your actual LAN IP and localhost
+                if remote_listening_addr[1] == int(config.PORT):
+                    if remote_listening_addr[0] in ("127.0.0.1", MY_LAN_IP):
+                        break
 
                 with network_lock:
                     peer_public_keys[conn] = pem_to_public_key(p_data["public_key"])
@@ -111,35 +135,21 @@ def receive_loop(conn):
                 from network.client import handle_challenge
                 handle_challenge(conn, p_data["challenge"])
 
-
             elif p_type == "chat":
-
                 with network_lock:
-
                     authenticated = conn in authenticated_peers
-
                 if not authenticated:
                     continue
 
                 sender = p_data["sender"]
-
                 recipient = p_data.get("recipient")
-
                 message = p_data["message"]
-
-                # FIX: If the sender is our own ID, do not save it again or emit a signal!
-
-                # We already wrote it to our DB and UI when pressing 'Send' in chat_window.py
 
                 if sender == config.PEER_ID:
                     continue
 
-                # Process and save incoming messages from external peers exactly once
-
                 save_message(sender, message, recipient)
-
                 from gui.signals import event_bus
-
                 event_bus.message_received.emit(sender, message, recipient)
 
             elif p_type == "peer_request":
@@ -151,7 +161,11 @@ def receive_loop(conn):
                 from network.client import connect_to_peer
                 for ip, port in p_data.get("peers", []):
                     port = int(port)
-                    if ip == HOST and port == int(config.PORT): continue
+
+                    # FIX 5: Skip self-routing updates if the ip matches localhost or your LAN IP
+                    if port == int(config.PORT) and ip in ("127.0.0.1", MY_LAN_IP):
+                        continue
+
                     with network_lock:
                         connected = (ip, port) in connected_peers
                     if not connected:
@@ -165,7 +179,9 @@ def receive_loop(conn):
 def start_server(port):
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    server.bind((HOST, port))
+
+    # FIX 6: Bind to LISTEN_HOST ('0.0.0.0') instead of the hardcoded localhost
+    server.bind((LISTEN_HOST, port))
     server.listen()
     from network.client import start_discovery_loop
     start_discovery_loop(receive_loop)
