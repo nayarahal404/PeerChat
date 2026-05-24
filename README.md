@@ -9,15 +9,17 @@ The system now supports:
 * **RSA Identity Verification:** Secure challenge-response authentication.
 * **Modernized GUI:** Polished PyQt6 interface with dark mode and sidebar navigation.
 * **Local Persistence:** Full message history stored and retrieved via SQLite.
+* **File Attachments (New):** Direct peer-to-peer file sharing with an intuitive layout and automated local caching.
 
 ---
 
 # Features
 
-## Networking
+## Networking & Data Transfer
 
 * Fully decentralized peer-to-peer architecture.
 * TCP socket communication with newline-delimited JSON streaming.
+* **Robust File Streaming:** Binary files are automatically serialized using Base64 ASCII strings, optimized with buffered socket streams ($1\text{ MB}$ allocation blocks) to allow seamless cross-platform delivery (e.g., Windows $\leftrightarrow$ Kali Linux) without data corruption or packet dropping.
 * Automatic peer discovery through bootstrap peers and dynamic peer list exchange.
 * Multi-peer simultaneous communication with continuous receive loops.
 * **Connectivity Note:** Ensure your **trusted bootstrap peers** are online and reachable on their specified ports to join the network swarm successfully.
@@ -29,16 +31,20 @@ The system now supports:
 * **Challenge-Response Flow:** Prevents identity theft without ever transmitting private keys or passwords.
 * **Key Isolation:** All sensitive `.pem` files are stored in a dedicated `keys/` directory, organized by username.
 
-## Messaging
+## Messaging & Sharing
 
 * **Direct Private Messaging:** Target specific peers for 1-on-1 filtered conversations.
 * **Global Broadcast:** Message all connected peers in the swarm simultaneously.
-* **JSON Packet Protocol:** Structured 3-part communication (Sender, Message, Recipient) for precise routing.
-* **Persistence:** All incoming and outgoing messages are saved to `chat_history.db`.
+* **File Attachments:** WhatsApp-style file sending interface natively integrated next to the input message bar.
+* **Automatic Downloads:** Received attachments are automatically buffered, collision-checked to prevent filename overwriting, and stored securely in a local `downloads/` folder.
+* **JSON Packet Protocol:** Structured communication payloads for precise text routing and robust file segment mapping.
+* **Persistence:** All text messages and file-transfer reference markers are saved locally to `chat_history.db`.
 
 ## GUI
 
 * **Modern PyQt6 Interface:** Sidebar for peer selection and a sleek dark-themed chat area.
+* **Attachment Button:** A dedicated paperclip attachment icon (📎) mapped directly to your operating system's native file explorer.
+* **Enhanced Log Rendering:** Context-aware UI highlighting that dynamically wraps file attachments in custom stylized blocks to differentiate them from standard text messages.
 * **Identity Header:** Clear display of your unique cryptographic Peer ID at the top right.
 * **Contextual History:** Automatic message retrieval from SQLite based on the selected peer in the sidebar.
 
@@ -63,6 +69,7 @@ The system now supports:
                 │    Peer D     │
                 └───────────────┘
 
+
 ```
 
 Each peer contains:
@@ -70,7 +77,7 @@ Each peer contains:
 * Listener Server & Outgoing Client Connector
 * Message Handler & Peer Discovery Engine
 * Authentication Layer (RSA)
-* Local SQLite Database & Modern PyQt6 Frontend
+* Local SQLite Database, Buffered Downloader, & Modern PyQt6 Frontend
 
 ---
 
@@ -90,6 +97,7 @@ PeerChat uses cryptographic verification instead of passwords.
 5. Verify Signature using Public Key
       ↓
 6. Authenticated Communication Begins
+
 
 ```
 
@@ -113,6 +121,21 @@ PeerChat uses cryptographic verification instead of passwords.
 
 *If `recipient` is null, the message is treated as a Global Broadcast.*
 
+## File Transfer Packet (New)
+
+```json
+{
+    "type": "file_transfer",
+    "data": {
+        "sender": "Alice-a1b2c3d4",
+        "recipient": "Bob-e5f6g7h8",
+        "file_name": "document.pdf",
+        "payload": "JVBERi0xLjQKJbXtr90KMSAwIG9iagogIDw8IC9UeXBlIC9DYXRhbG9nCiAgICAvUGFn..."
+    }
+}
+
+```
+
 ---
 
 # Folder Structure
@@ -127,19 +150,22 @@ peerchat/
 │   ├── Alice_private.pem
 │   └── Alice_public.pem
 │
+├── downloads/          # Auto-created folder for received file attachments
+│   └── shared_image.png
+│
 ├── gui/
 │   ├── app.py          # Start GUI
-│   ├── chat_window.py  # Filtered UI logic & Context Switching
+│   ├── chat_window.py  # Attachment action trigger, UI rendering, & Filtered logic
 │   └── signals.py      # Event bus (3-part signaling: Sender, Msg, Recipient)
 │
 ├── network/
-│   ├── server.py       # Handshake, Routing & Signal Emission
-│   ├── client.py       # Connection & Transmission logic
+│   ├── server.py       # Handshake, Buffered File Writer, Routing & Signal Emission
+│   ├── client.py       # Connection, Base64 File Serializer & Transmission logic
 │   └── discovery.py    # Global peer registry
 │
 ├── security/
-│   ├── keys.py        # Public & private key generation
-│   └── crypto.py      # Hashing, and filename management
+│   ├── keys.py         # Public & private key generation
+│   └── crypto.py       # Hashing, and filename management
 │   
 └── storage/
     └── database.py     # SQLite history (get_history, save_message)
@@ -186,9 +212,9 @@ python main.py 9002 Charlie
 
 # Planned Improvements
 
-* **E2EE Messaging:** Encrypting message payloads with RSA Public Keys/AES-GCM.
-* **NAT Traversal:** UDP hole punching and STUN support for over-the-internet P2P.
-* **Advanced UI:** Unread message indicators and file transfer progress bars.
+* **E2EE Messaging:** Encrypting message payloads and file buffers natively with RSA Public Keys/AES-GCM before transport serialization.
+* **NAT Traversal:** UDP hole punching and STUN support for over-the-internet P2P swarming.
+* **Advanced UI:** Unread message indicators and visual file transfer progress bars.
 
 ---
 
