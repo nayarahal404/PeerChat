@@ -70,3 +70,41 @@ def get_history(target_peer=None):
     rows = cursor.fetchall()
     conn.close()
     return rows
+
+def get_all_chat_peers():
+    """
+    Returns every peer we've ever exchanged messages with.
+    Used to populate the sidebar even when peers are offline.
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    peers = set()
+
+    # People who sent us messages
+    cursor.execute("""
+        SELECT DISTINCT sender
+        FROM messages
+        WHERE sender IS NOT NULL
+    """)
+
+    for (sender,) in cursor.fetchall():
+        if sender and sender != config.PEER_ID:
+            peers.add(sender)
+
+    # People we sent messages to
+    cursor.execute("""
+        SELECT DISTINCT recipient
+        FROM messages
+        WHERE recipient IS NOT NULL
+    """)
+
+    for (recipient,) in cursor.fetchall():
+        if recipient and recipient != config.PEER_ID:
+            peers.add(recipient)
+
+
+
+    conn.close()
+
+    return sorted(peers)

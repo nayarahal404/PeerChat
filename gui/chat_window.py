@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QTimer
 from gui.signals import event_bus
 from network.client import send_chat_message, send_file_attachment  # ADDED: Network helper
-from storage.database import get_history, save_message
+from storage.database import get_history, save_message, get_all_chat_peers
 import config
 
 
@@ -147,29 +147,69 @@ class ChatWindow(QWidget):
 
     def update_peer_list(self):
         from network.discover import peer_ids
+
         current_item = self.peer_list_widget.currentItem()
-        selected_name = current_item.text() if current_item else "Global Chat"
+
+        if current_item:
+            selected_name = (
+                current_item.text().rsplit(" ", 1)[0]
+                if current_item.text() != "Global Chat"
+                else "Global Chat"
+            )
+        else:
+            selected_name = "Global Chat"
 
         self.peer_list_widget.clear()
         self.peer_list_widget.addItem("Global Chat")
 
-        unique_peers = sorted(set(str(pid) for pid in peer_ids.values()))
+        # Currently online peers
+        online_peers = {
+            str(pid)
+            for pid in peer_ids.values()
+            if str(pid) != str(config.PEER_ID)
+        }
 
-        for pid in unique_peers:
-            if pid != str(config.PEER_ID):
-                self.peer_list_widget.addItem(pid)
+        # Peers from chat history
+        historical_peers = set(get_all_chat_peers())
 
-        items = self.peer_list_widget.findItems(selected_name, Qt.MatchFlag.MatchExactly)
+
+        # Show both online and offline peers
+        all_peers = sorted(historical_peers | online_peers)
+
+        for peer in all_peers:
+            status = "🟢" if peer in online_peers else "⚫"
+            self.peer_list_widget.addItem(f"{peer} {status}")
+
+        # Restore previous selection
+        if selected_name == "Global Chat":
+            items = self.peer_list_widget.findItems(
+                "Global Chat",
+                Qt.MatchFlag.MatchExactly
+            )
+        else:
+            items = self.peer_list_widget.findItems(
+                selected_name,
+                Qt.MatchFlag.MatchStartsWith
+            )
+
         if items:
             self.peer_list_widget.setCurrentItem(items[0])
 
     def switch_chat_context(self, item):
-        self.current_chat_target = item.text()
+        text = item.text()
+
+        if text == "Global Chat":
+            self.current_chat_target = "Global Chat"
+        else:
+            # Remove online/offline indicator
+            self.current_chat_target = text.rsplit(" ", 1)[0]
 
         if self.current_chat_target == "Global Chat":
             self.chat_status_label.setText("Global Chat")
         else:
-            self.chat_status_label.setText(f"Private Chat: {self.current_chat_target}")
+            self.chat_status_label.setText(
+                f"Private Chat: {self.current_chat_target}"
+            )
 
         self.load_history_from_db()
 
