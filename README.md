@@ -209,6 +209,46 @@ python main.py 9001 Bob
 python main.py 9002 Charlie
 
 ```
+# Bootstrap Peers Configuration
+
+PeerChat relies on a set of bootstrap peers to discover and connect to the network. These peers are currently defined in `network/discovery.py` as:
+
+```python
+BOOTSTRAP_PEERS = [
+    ("192.168.1.41", 9000),
+    ("192.168.1.41", 9001),
+    ("127.0.0.1", 9002)
+]
+```
+
+When deploying PeerChat on a Local Area Network (LAN), you should modify the IP addresses to match the machines that will act as initial bootstrap nodes on your network.
+
+For example, if two peers are running on a machine with LAN IP `192.168.1.50`, you might configure:
+
+```python
+BOOTSTRAP_PEERS = [
+    ("192.168.1.50", 9000),
+    ("192.168.1.50", 9001)
+]
+```
+
+For local testing on a single machine, you can connect through the localhost bootstrap peer:
+
+```python
+("127.0.0.1", 9002)
+```
+
+or add additional localhost entries:
+
+```python
+BOOTSTRAP_PEERS = [
+    ("127.0.0.1", 9000),
+    ("127.0.0.1", 9001),
+    ("127.0.0.1", 9002)
+]
+```
+
+At least one bootstrap peer must be online and reachable for new nodes to discover and join the network successfully. Once connected, PeerChat automatically exchanges peer information and expands the network through its peer discovery mechanism.
 
 ---
 

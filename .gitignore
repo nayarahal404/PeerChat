@@ -3,3 +3,8 @@
 
 # Keys
 *.pem
+
+**/__pycache__/
+*.pyc
+
+.idea/

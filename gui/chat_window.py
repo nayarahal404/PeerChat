@@ -153,9 +153,11 @@ class ChatWindow(QWidget):
         self.peer_list_widget.clear()
         self.peer_list_widget.addItem("Global Chat")
 
-        for pid in sorted(peer_ids.values()):
-            if str(pid) != str(config.PEER_ID):
-                self.peer_list_widget.addItem(str(pid))
+        unique_peers = sorted(set(str(pid) for pid in peer_ids.values()))
+
+        for pid in unique_peers:
+            if pid != str(config.PEER_ID):
+                self.peer_list_widget.addItem(pid)
 
         items = self.peer_list_widget.findItems(selected_name, Qt.MatchFlag.MatchExactly)
         if items:
