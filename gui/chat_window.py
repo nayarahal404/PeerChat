@@ -105,6 +105,7 @@ class ChatWindow(QWidget):
         self.init_ui()
 
         event_bus.message_received.connect(self.handle_incoming_signal)
+        event_bus.message_status_updated.connect(self.handle_status_update)
 
         self.refresh_timer = QTimer()
         self.refresh_timer.timeout.connect(self.update_peer_list)
@@ -386,13 +387,13 @@ class ChatWindow(QWidget):
         if not file_path:
             return
         recipient = None if self.current_chat_target == "Global Chat" else self.current_chat_target
-        file_name = send_file_attachment(file_path, recipient)
-        if file_name:
+        file_name, msg_id = send_file_attachment(file_path, recipient)
+        if file_name and msg_id:
             display_msg = f"📎 Sent a file: {file_name}"
             save_message(config.PEER_ID, display_msg, recipient)
 
             timestamp = QDateTime.currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
-            self.append_to_ui(config.PEER_ID, f"[{timestamp}] {display_msg}")
+            self.append_to_ui(config.PEER_ID, f"[{timestamp}] {display_msg}", msg_id=msg_id, initial_status="✓")
 
     def update_peer_list(self):
         from network.discover import peer_ids
@@ -459,18 +460,21 @@ class ChatWindow(QWidget):
         self.chat_box.clear()
         target = None if self.current_chat_target == "Global Chat" else self.current_chat_target
         for sender, message, timestamp, is_read in get_history(target):
-            self.append_to_ui(sender, f"[{timestamp}] {message}")
+            # Pass initial_status="✓✓" for database history logs since they have already been delivered successfully in the past
+            self.append_to_ui(sender, f"[{timestamp}] {message}",
+                              initial_status="✓✓" if sender == config.PEER_ID else "")
 
     def send_message(self):
         text = self.input_box.text().strip()
         if not text:
             return
         recipient = None if self.current_chat_target == "Global Chat" else self.current_chat_target
-        send_chat_message(text, recipient)
+        msg_id = send_chat_message(text, recipient)
         save_message(config.PEER_ID, text, recipient)
 
         timestamp = QDateTime.currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
-        self.append_to_ui(config.PEER_ID, f"[{timestamp}] {text}")
+        # Appends locally with standard single checkmark '✓'
+        self.append_to_ui(config.PEER_ID, f"[{timestamp}] {text}", msg_id=msg_id, initial_status="✓")
         self.input_box.clear()
 
     def handle_incoming_signal(self, sender, message, recipient):
@@ -487,28 +491,44 @@ class ChatWindow(QWidget):
                 (sender == config.PEER_ID and recipient == self.current_chat_target)
         )
         if show:
-            # Generate local timestamp so receiver gets visual updates in real time
+            # Local timestamp calculations so receiver windows process updates instantly
             timestamp = QDateTime.currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
             self.append_to_ui(sender, f"[{timestamp}] {message}")
         else:
             self.update_peer_list()
 
-    def append_to_ui(self, sender, message):
+    def handle_status_update(self, msg_id, status):
+        # Scan QTextHtml framework to locate the exact msg_id container block and swap checkmarks
+        if status == "delivered":
+            current_html = self.chat_box.toHtml()
+            target_id_string = f'id="{msg_id}"'
+            if target_id_string in current_html:
+                # Swaps single status indicator text to double confirmation
+                updated_html = current_html.replace(f'id="{msg_id}">✓', f'id="{msg_id}">✓✓')
+                scrollbar_pos = self.chat_box.verticalScrollBar().value()
+                self.chat_box.setHtml(updated_html)
+                self.chat_box.verticalScrollBar().setValue(scrollbar_pos)
+
+    def append_to_ui(self, sender, message, msg_id="", initial_status=""):
         is_me = sender == config.PEER_ID
         color = "#f5c2e7" if is_me else "#89b4fa"
         label = "You" if is_me else sender
+
+        # Embedded status tracker tag
+        status_span = f"&nbsp;<span id='{msg_id}' style='color: #a6e3a1; font-weight: bold;'>{initial_status}</span>" if (
+                    is_me and initial_status) else ""
 
         if "📎" in message:
             formatted = (
                 f"<div style='margin: 6px 0; padding: 12px 16px; "
                 f"background-color: #1a2535; border-left: 3px solid #a6e3a1; border-radius: 10px;'>"
-                f"<span style='color: {color}; font-weight: 700; font-size: 13px;'>{label}</span><br/>"
+                f"<span style='color: {color}; font-weight: 700; font-size: 13px;'>{label}</span>{status_span}<br/>"
                 f"<span style='color: #a6e3a1; font-size: 14px;'>{message}</span></div>"
             )
         else:
             formatted = (
                 f"<div style='margin: 5px 0; padding: 2px 0;'>"
-                f"<span style='color: {color}; font-weight: 700; font-size: 13px;'>{label}</span>"
+                f"<span style='color: {color}; font-weight: 700; font-size: 13px;'>{label}</span>{status_span}"
                 f"&nbsp;<span style='color: #cdd6f4; font-size: 14px;'>{message}</span></div>"
             )
 

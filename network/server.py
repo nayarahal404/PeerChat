@@ -141,6 +141,7 @@ def receive_loop(conn):
                 if not authenticated:
                     continue
 
+                msg_id = p_data.get("msg_id")
                 sender = p_data["sender"]
                 recipient = p_data.get("recipient")
                 message = p_data["message"]
@@ -152,16 +153,25 @@ def receive_loop(conn):
                 from gui.signals import event_bus
                 event_bus.message_received.emit(sender, message, recipient)
 
+                # Send delivery acknowledgement back to original sender node
+                if msg_id:
+                    try:
+                        conn.sendall(create_packet("msg_ack", {"msg_id": msg_id, "status": "delivered"}))
+                    except:
+                        pass
+
             elif p_type == "peer_request":
                 with network_lock:
                     authenticated = conn in authenticated_peers
                 if authenticated: push_routing_table(conn)
+
             elif p_type == "file_transfer":
                 with network_lock:
                     authenticated = conn in authenticated_peers
                 if not authenticated:
                     continue
 
+                msg_id = p_data.get("msg_id")
                 sender = p_data["sender"]
                 recipient = p_data.get("recipient")
                 file_name = p_data["file_name"]
@@ -171,7 +181,6 @@ def receive_loop(conn):
                     continue
 
                 # Reconstruct and save file
-
                 os.makedirs("downloads", exist_ok=True)
 
                 # Deduplicate filename if it exists
@@ -196,6 +205,20 @@ def receive_loop(conn):
                 save_message(sender, display_msg, recipient)
                 from gui.signals import event_bus
                 event_bus.message_received.emit(sender, display_msg, recipient)
+
+                # Send delivery acknowledgement back to original sender node
+                if msg_id:
+                    try:
+                        conn.sendall(create_packet("msg_ack", {"msg_id": msg_id, "status": "delivered"}))
+                    except:
+                        pass
+
+            # Handle Incoming Delivery Acknowledgements from peers
+            elif p_type == "msg_ack":
+                ack_id = p_data.get("msg_id")
+                status = p_data.get("status")
+                from gui.signals import event_bus
+                event_bus.message_status_updated.emit(ack_id, status)
 
             elif p_type == "peer_response":
                 from network.client import connect_to_peer

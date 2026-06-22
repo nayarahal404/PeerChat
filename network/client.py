@@ -81,7 +81,11 @@ def send_chat_message(message, target_peer_id=None):
     from network.discover import network_lock, peer_ids, authenticated_peers
     import config
 
+    # Generate tracking unique hash for delivery indicators
+    msg_id = f"{config.PEER_ID}_{time.time_ns()}"
+
     packet = create_packet("chat", {
+        "msg_id": msg_id,
         "sender": config.PEER_ID,
         "recipient": target_peer_id,
         "message": message
@@ -107,6 +111,8 @@ def send_chat_message(message, target_peer_id=None):
             except:
                 pass
 
+    return msg_id
+
 
 last_attempts = {}
 
@@ -117,7 +123,7 @@ def send_file_attachment(file_path, target_peer_id=None):
     import config
 
     if not os.path.exists(file_path):
-        return None
+        return None, None
 
     file_name = os.path.basename(file_path)
 
@@ -126,7 +132,11 @@ def send_file_attachment(file_path, target_peer_id=None):
         file_bytes = f.read()
     base64_data = base64.b64encode(file_bytes).decode('utf-8')
 
+    # Generate tracking unique hash for delivery indicators
+    msg_id = f"{config.PEER_ID}_{time.time_ns()}"
+
     packet = create_packet("file_transfer", {
+        "msg_id": msg_id,
         "sender": config.PEER_ID,
         "recipient": target_peer_id,
         "file_name": file_name,
@@ -153,7 +163,7 @@ def send_file_attachment(file_path, target_peer_id=None):
             except:
                 pass
 
-    return file_name  # Return to GUI for local rendering
+    return file_name, msg_id  # Return to GUI for local rendering and status tracking
 
 
 def start_discovery_loop(receive_loop):
