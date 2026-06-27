@@ -26,12 +26,11 @@ def get_db_connection():
     )
     """)
 
-    # Add is_read column if it doesn't exist (for backward compatibility)
     try:
         cursor.execute("ALTER TABLE messages ADD COLUMN is_read INTEGER DEFAULT 0")
         conn.commit()
     except sqlite3.OperationalError:
-        pass  # Column already exists
+        pass
 
     conn.commit()
     return conn
@@ -55,10 +54,8 @@ def save_message(sender, message, recipient=None):
         """, (msg_hash, sender, message, recipient))
 
         conn.commit()
-
     except Exception as e:
         print(f"[DB_ERROR] Failed to save message: {e}")
-
     finally:
         conn.close()
 
@@ -90,15 +87,10 @@ def get_history(target_peer=None):
 
 
 def get_all_chat_peers():
-    """
-    Returns every peer we've ever exchanged messages with.
-    Used for showing offline + online peers in UI.
-    """
     conn = get_db_connection()
     cursor = conn.cursor()
 
     peers = set()
-
     cursor.execute("SELECT sender, recipient FROM messages")
 
     for sender, recipient in cursor.fetchall():
@@ -112,9 +104,6 @@ def get_all_chat_peers():
 
 
 def get_unread_count(target_peer=None):
-    """
-    Returns the count of unread messages from a specific peer or in Global Chat.
-    """
     conn = get_db_connection()
     cursor = conn.cursor()
     my_id = config.PEER_ID
@@ -138,9 +127,6 @@ def get_unread_count(target_peer=None):
 
 
 def mark_as_read(target_peer=None):
-    """
-    Marks all messages from a specific peer or in Global Chat as read.
-    """
     conn = get_db_connection()
     cursor = conn.cursor()
     my_id = config.PEER_ID
