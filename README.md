@@ -77,16 +77,17 @@ The interface has been fully updated to a sleek, modern visual aesthetic based o
 
 ### Configuration Window (Startup Screen)
 
-* **Glitch-Free UI Rendering:** Form fields use locked structural bounds and anti-flicker layout placeholders to prevent font shaking or popping on app initialization.
-* **Modern Geometric Aesthetics:** Features soft floating container cards with rounded corners (24px border-radius).
-* **Validation Subsystem:** Handles improper or unassigned form fields locally before spinning up network socket resources.
+* **Glitch-Free UI Rendering:** 
+* **Modern Geometric Aesthetics:** 
+* **Validation Subsystem:** 
 
 ### Main Chat Window
 
-* **Enhanced Peer List:** Bold, high-contrast typography displaying active peer statuses against rich background blocks for excellent visibility.
-* **Integrated Control Panels:** The attachment clip button (`📎`) and message entry boxes are seamlessly styled side-by-side inside custom inner frames.
-* **Real-Time Indicators:** Real-time online/offline peer visibility tracking:
+* **Enhanced Peer List:**
+* **Integrated Control Panels**
+* **Real-Time Indicators:** Real-time online/offline peer visibility tracking
 * **Online (currently connected)**
+* **Message delivery status indicators (✓ / ✓✓)**
 
 
 
@@ -306,8 +307,6 @@ At least one bootstrap peer must be online for initial network discovery. Once c
 
 # Planned Improvements
 
-* Message delivery status indicators (✓ / ✓✓)
-* Unread message counters
 * Typing indicators
 * File transfer progress bars
 

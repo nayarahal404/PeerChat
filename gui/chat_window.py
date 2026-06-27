@@ -393,7 +393,7 @@ class ChatWindow(QWidget):
             save_message(config.PEER_ID, display_msg, recipient)
 
             timestamp = QDateTime.currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
-            self.append_to_ui(config.PEER_ID, f"[{timestamp}] {display_msg}", msg_id=msg_id, initial_status="✓")
+            self.append_to_ui(config.PEER_ID, f"[{display_msg} {timestamp}]", msg_id=msg_id, initial_status="✓")
 
     def update_peer_list(self):
         from network.discover import peer_ids
@@ -460,7 +460,6 @@ class ChatWindow(QWidget):
         self.chat_box.clear()
         target = None if self.current_chat_target == "Global Chat" else self.current_chat_target
         for sender, message, timestamp, is_read in get_history(target):
-            # Pass initial_status="✓✓" for database history logs since they have already been delivered successfully in the past
             self.append_to_ui(sender, f"[{timestamp}] {message}",
                               initial_status="✓✓" if sender == config.PEER_ID else "")
 
@@ -473,8 +472,7 @@ class ChatWindow(QWidget):
         save_message(config.PEER_ID, text, recipient)
 
         timestamp = QDateTime.currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
-        # Appends locally with standard single checkmark '✓'
-        self.append_to_ui(config.PEER_ID, f"[{timestamp}] {text}", msg_id=msg_id, initial_status="✓")
+        self.append_to_ui(config.PEER_ID, f"{text} [{timestamp}]", msg_id=msg_id, initial_status="✓")
         self.input_box.clear()
 
     def handle_incoming_signal(self, sender, message, recipient):
@@ -491,46 +489,79 @@ class ChatWindow(QWidget):
                 (sender == config.PEER_ID and recipient == self.current_chat_target)
         )
         if show:
-            # Local timestamp calculations so receiver windows process updates instantly
             timestamp = QDateTime.currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
-            self.append_to_ui(sender, f"[{timestamp}] {message}")
+            self.append_to_ui(sender, f"{message} [{timestamp}]")
         else:
             self.update_peer_list()
 
     def handle_status_update(self, msg_id, status):
-        # Scan QTextHtml framework to locate the exact msg_id container block and swap checkmarks
         if status == "delivered":
             current_html = self.chat_box.toHtml()
             target_id_string = f'id="{msg_id}"'
             if target_id_string in current_html:
-                # Swaps single status indicator text to double confirmation
                 updated_html = current_html.replace(f'id="{msg_id}">✓', f'id="{msg_id}">✓✓')
                 scrollbar_pos = self.chat_box.verticalScrollBar().value()
                 self.chat_box.setHtml(updated_html)
                 self.chat_box.verticalScrollBar().setValue(scrollbar_pos)
 
+    def get_peer_color(self, username: str) -> str:
+        colors = [
+            "#f5e0dc", "#f2cdcd", "#f5bde6", "#cba6f7", "#f38ba8",
+            "#eba0ac", "#fab387", "#f9e2af", "#a6e3a1", "#94e2d5",
+            "#89dceb", "#74c7ec", "#b4befe"
+        ]
+        hash_value = abs(hash(username))
+        return colors[hash_value % len(colors)]
+
     def append_to_ui(self, sender, message, msg_id="", initial_status=""):
         is_me = sender == config.PEER_ID
-        color = "#f5c2e7" if is_me else "#89b4fa"
-        label = "You" if is_me else sender
 
-        # Embedded status tracker tag
-        status_span = f"&nbsp;<span id='{msg_id}' style='color: #a6e3a1; font-weight: bold;'>{initial_status}</span>" if (
-                    is_me and initial_status) else ""
+        # Generate configuration metrics based on ownership
+        if is_me:
+            color = "#b4befe"
+            label = "You"
+            align = "left"
+            bg_color = "transparent"  # Removed background color
+            text_color = "#cdd6f4"
+            border_style = ""
+        else:
+            color = self.get_peer_color(sender)
+            label = sender
+            align = "right"
+            bg_color = "transparent"  # Removed background color
+            text_color = "#cdd6f4"
+            border_style = ""
 
         if "📎" in message:
-            formatted = (
-                f"<div style='margin: 6px 0; padding: 12px 16px; "
-                f"background-color: #1a2535; border-left: 3px solid #a6e3a1; border-radius: 10px;'>"
-                f"<span style='color: {color}; font-weight: 700; font-size: 13px;'>{label}</span>{status_span}<br/>"
-                f"<span style='color: #a6e3a1; font-size: 14px;'>{message}</span></div>"
-            )
-        else:
-            formatted = (
-                f"<div style='margin: 5px 0; padding: 2px 0;'>"
-                f"<span style='color: {color}; font-weight: 700; font-size: 13px;'>{label}</span>{status_span}"
-                f"&nbsp;<span style='color: #cdd6f4; font-size: 14px;'>{message}</span></div>"
-            )
+            bg_color = "#1a2535"  # Keeps the attachment background if desired, or change to "transparent"
+            text_color = "#a6e3a1"
+            border_style = "border-left: 3px solid #a6e3a1;"
 
-        self.chat_box.append(formatted)
+        status_span = f"&nbsp;<span id='{msg_id}' style='color: #a6e3a1; font-weight: bold;'>{initial_status}</span>" if (
+                is_me and initial_status) else ""
+
+        # Use an absolute table structure to pin username tightly on top of the bubble element
+        formatted_table = (
+            f"<table width='100%' border='0' cellspacing='0' cellpadding='0' style='margin: 4px 0;'>"
+            f"  <tr>"
+            f"    <td align='{align}'>"
+            f"      <table border='0' cellspacing='0' cellpadding='0' style='max-width: 75%;'>"
+            f"        <tr>"
+            f"          <td align='{align}' style='padding-bottom: 2px;'>"
+            f"            <span style='color: {color}; font-weight: 700; font-size: 12px;'>{label}</span>"
+            f"          </td>"
+            f"        </tr>"
+            f"        <tr>"
+            f"          <td align='left' style='background-color: {bg_color}; padding: 8px 14px; border-radius: 10px; {border_style}'>"
+            f"            <span style='color: {text_color}; font-size: 14px;'>{message}</span>{status_span}"
+            f"          </td>"
+            f"        </tr>"
+            f"      </table>"
+        )
+
+        cursor = self.chat_box.textCursor()
+        cursor.movePosition(cursor.MoveOperation.End)
+        cursor.insertHtml(formatted_table)
+        cursor.insertBlock()
+
         self.chat_box.verticalScrollBar().setValue(self.chat_box.verticalScrollBar().maximum())
